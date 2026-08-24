@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ADC Optimization Engine — Pricing</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: #ffffff; color: #111111; margin: 0; padding: 48px 24px;
+  }
+  .container { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 28px; text-align: center; margin-bottom: 6px; }
+  .subtitle { text-align: center; color: #666; font-size: 14px; margin-bottom: 44px; }
+  .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .plan-card {
+    border: 1px solid #e5e5e5; border-radius: 10px; padding: 28px 24px;
+    display: flex; flex-direction: column;
+  }
+  .plan-card.featured { border: 2px solid #111111; }
+  .plan-name { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: #666; margin-bottom: 8px; }
+  .plan-price { font-size: 34px; font-weight: 700; margin-bottom: 4px; }
+  .plan-price span { font-size: 14px; font-weight: 400; color: #666; }
+  .plan-features { list-style: none; padding: 0; margin: 20px 0; font-size: 13.5px; flex-grow: 1; }
+  .plan-features li { padding: 6px 0; border-bottom: 1px solid #f2f2f2; }
+  .plan-features li:before { content: "✓ "; color: #0a8a3f; font-weight: 700; }
+  .plan-cta {
+    display: block; text-align: center; padding: 11px; border-radius: 6px;
+    background: #111111; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px;
+    border: none; cursor: pointer; width: 100%;
+  }
+  .plan-cta.secondary { background: #ffffff; color: #111111; border: 1px solid #111111; }
+  .loading, .error { text-align: center; color: #666; padding: 40px; }
+  .error { color: #c0392b; }
+  .disclosure {
+    max-width: 700px; margin: 48px auto 0; font-size: 12px; color: #666;
+    border-top: 1px solid #e5e5e5; padding-top: 20px; line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>ADC Optimization Engine</h1>
+  <div class="subtitle">Institutional-grade portfolio construction, priced by usage.</div>
+  <div id="plans-container" class="loading">Loading current plans…</div>
+  <div class="disclosure">
+    Prices and limits shown are fetched live from <code>/billing/plans</code> on your running
+    API instance — this page never hardcodes numbers that could drift out of sync with what
+    the server actually enforces. Checkout redirects to Stripe's own hosted payment page;
+    no card details are ever handled by this page or this codebase directly.
+  </div>
+</div>
+
+<script>
+  // Point this at your actual deployed API base URL.
+  const API_BASE = window.location.origin.includes("localhost") || window.location.protocol === "file:"
+    ? "http://localhost:8000" : window.location.origin;
+
+  async function loadPlans() {
+    const container = document.getElementById("plans-container");
+    try {
+      const resp = await fetch(`${API_BASE}/billing/plans`);
+      if (!resp.ok) throw new Error(`API returned ${resp.status}`);
+      const plans = await resp.json();
+      renderPlans(plans);
+    } catch (err) {
+      container.className = "error";
+      container.textContent = `Couldn't load plans from ${API_BASE}/billing/plans (${err.message}). ` +
+        `Make sure the API server is running and PORTFOLIO_OPTIMIZER_SAAS_MODE=1 is set.`;
+    }
+  }
+
+  function renderPlans(plans) {
+    const container = document.getElementById("plans-container");
+    container.className = "plans";
+    container.innerHTML = "";
+    plans.forEach((p, i) => {
+      const card = document.createElement("div");
+      card.className = "plan-card" + (p.tier === "pro" ? " featured" : "");
+
+      const priceLabel = p.monthly_price_usd === 0 ? "Free" : `$${p.monthly_price_usd}<span>/mo</span>`;
+      const features = [
+        `${p.requests_per_month.toLocaleString()} requests / month`,
+        `${p.requests_per_minute} requests / minute`,
+        `Up to ${p.max_assets_per_request} assets per request`,
+        `Endpoints: ${p.allowed_endpoints.join(", ")}`,
+        p.live_trading_allowed ? "Live paper-trading loop included" : "Research/API access only",
+      ];
+
+      card.innerHTML = `
+        <div class="plan-name">${p.display_name}</div>
+        <div class="plan-price">${priceLabel}</div>
+        <ul class="plan-features">${features.map(f => `<li>${f}</li>`).join("")}</ul>
+        <button class="plan-cta ${p.tier === 'free' ? 'secondary' : ''}" data-tier="${p.tier}">
+          ${p.tier === 'free' ? 'Get free API key' : 'Subscribe'}
+        </button>
+      `;
+      card.querySelector("button").addEventListener("click", () => startCheckout(p.tier));
+      container.appendChild(card);
+    });
+  }
+
+  async function startCheckout(tier) {
+    if (tier === "free") {
+      alert("Free-tier signup: wire this button to your own account-creation flow " +
+            "(e.g. POST to a /signup endpoint that calls TenancyStore.create_customer " +
+            "+ issue_api_key), since Free doesn't go through Stripe Checkout at all.");
+      return;
+    }
+    const email = prompt("Email for your subscription:");
+    if (!email) return;
+    try {
+      const resp = await fetch(`${API_BASE}/billing/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email, plan: tier,
+          success_url: window.location.href + "?checkout=success",
+          cancel_url: window.location.href + "?checkout=cancelled",
+        }),
+      });
+      const body = await resp.json();
+      if (!resp.ok) throw new Error(body.detail || "Checkout failed");
+      window.location.href = body.checkout_url;   // real Stripe-hosted payment page
+    } catch (err) {
+      alert(`Checkout error: ${err.message}`);
+    }
+  }
+
+  loadPlans();
+</script>
+</body>
+</html>

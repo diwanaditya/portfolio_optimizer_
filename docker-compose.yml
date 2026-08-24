@@ -1,0 +1,57 @@
+# Production-shaped compose file: API behind nginx (TLS termination +
+# security headers + static file serving for the dashboards/pricing
+# page), with a named volume for the SQLite databases so they survive
+# container restarts/redeploys.
+#
+# SCOPE NOTE: SQLite (used by infra/persistence.py and saas/tenancy.py)
+# is fine for a single API instance. If you scale `workers` up in
+# gunicorn_conf.py or run multiple `api` replicas, SQLite's single-writer
+# model becomes the bottleneck -- at that point, swap PortfolioStateStore
+# and TenancyStore's connection string for Postgres (the SQL in both is
+# vanilla enough to port directly; see infra/persistence.py's docstring).
+#
+# Usage:
+#   cp .env.example .env   # fill in real values
+#   docker compose up -d --build
+#   docker compose logs -f api
+
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - ENVIRONMENT=production
+      - HOST=0.0.0.0
+      - PORT=8000
+    volumes:
+      - portfolio_data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./pricing.html:/usr/share/nginx/html/pricing.html:ro
+      # Mount your real TLS certificates here (e.g. from certbot/Let's
+      # Encrypt) -- nginx.conf's server block expects cert.pem/key.pem
+      # at these paths. Left as a bind mount, not baked into the image,
+      # so certificate renewal doesn't require rebuilding anything.
+      - ./certs:/etc/nginx/certs:ro
+
+volumes:
+  portfolio_data:

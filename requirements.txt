@@ -1,0 +1,58 @@
+# ============================================================================
+# Pinned to EXACT versions used by the project CI and release workflow.
+# Loose >= bounds are how a library
+# quietly breaks six months later on a fresh install when an upstream
+# package changes an API out from under you (this happened during
+# development: PyPortfolioOpt's HRP broke against a newer scipy that
+# removed `_LINKAGE_METHODS`). Bump these deliberately, one at a time,
+# and re-run the full test suite before trusting a newer version.
+# ============================================================================
+
+# --- Core (required) ---
+numpy==2.4.6
+pandas==3.0.5
+scipy==1.17.1
+matplotlib==3.10.8
+hmmlearn==0.3.3
+fastapi==0.141.1
+uvicorn==0.52.1
+pydantic==2.13.4
+pytest==9.1.1
+
+# --- API security (required for portfolio_optimizer.api) ---
+slowapi==0.1.10
+PyJWT==2.7.0
+httpx==0.28.1          # required by fastapi.testclient / TestClient-based tests
+pydantic-settings==2.15.0
+gunicorn==26.1.0
+
+python-dotenv==1.2.2
+
+# --- Live data adapters (portfolio_optimizer.data) - install what you need ---
+yfinance==1.5.2
+requests==2.33.1
+alpaca-py==0.43.5
+
+# --- Reinforcement learning (portfolio_optimizer.rl) - OPTIONAL ---
+# The package imports cleanly without this; only instantiating PPOAgent /
+# SACAgent / DQNAgent requires it, and raises a clear ImportError if missing.
+torch==2.13.0
+
+# --- GPU acceleration (portfolio_optimizer.gpu) - OPTIONAL ---
+# All lazy-imported; the package and portfolio_optimizer.gpu both work on
+# plain NumPy with none of these installed.
+jax==0.11.0
+jaxlib==0.11.0
+# cupy-cuda12x==13.x   # uncomment and pin on a CUDA 12.x GPU machine
+
+# --- SaaS billing (portfolio_optimizer.saas) - OPTIONAL, only needed if
+# PORTFOLIO_OPTIMIZER_SAAS_MODE=1
+stripe==15.4.0
+
+# --- Benchmarking (portfolio_optimizer.benchmarking) - OPTIONAL ---
+# Only needed to run examples/benchmark_report.py head-to-head comparisons.
+PyPortfolioOpt==1.6.0
+riskfolio-lib==7.3.0
+
+# --- Development / CI security tooling ---------------------------------
+pip-audit==2.9.0

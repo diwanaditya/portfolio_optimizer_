@@ -1,0 +1,13 @@
+# Never commit real credentials
+.env
+
+# Local databases created by running the live loop / dashboard
+*.db
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated reports (regenerate, don't version-control)
+dashboard.html
